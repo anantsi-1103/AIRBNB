@@ -11,6 +11,9 @@ import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.ui.Model;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 @Service
 @Slf4j
 @RequiredArgsConstructor
@@ -66,8 +69,20 @@ public class HoteServiceImpl implements HotelService{
         Hotel hotel = hotelRepo.findById(hotelID).orElseThrow(()-> new ResourceNotFoundException("Hotel not found with this ID" +hotelID));
 
         hotel.setActive(true);
+        hotelRepo.save(hotel);
 
 //       TODO -> Inventory update ->
+    }
+
+    @Override
+    public List<HotelDTO> getAllHotels() {
+        log.info("Fetching all hotels");
+
+        List<Hotel> hotels = hotelRepo.findAll();
+
+        return hotels.stream()
+                .map(hotel -> modelMapper.map(hotel, HotelDTO.class))
+                .collect(Collectors.toList());
     }
 
 

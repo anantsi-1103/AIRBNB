@@ -3,6 +3,8 @@ package com.logic.Service;
 import com.logic.DTO.HotelDTO;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Service
 public interface HotelService {
     HotelDTO createNewHotel (HotelDTO hotelDTO);
@@ -14,4 +16,6 @@ public interface HotelService {
     void deleteHotelById(Long id);
 
     void activateHotel(Long hotelID);
+
+    List<HotelDTO> getAllHotels();
 }
