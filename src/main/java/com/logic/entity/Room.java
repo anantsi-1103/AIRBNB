@@ -47,6 +47,13 @@ public class Room {
     @Column(nullable = false)
     private Integer capacity;
 
+    @OneToMany(
+            mappedBy = "room",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true
+    )
+    private List<Inventory> inventories;
+
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;

@@ -2,8 +2,7 @@ package com.logic.entity;
 
 import com.logic.entity.Hotel;
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -19,6 +18,9 @@ import java.time.LocalDateTime;
                 name = "unique_hotel_room_date",
                 columnNames = {"hotel_id", "room_id", "date"}
         ))
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class Inventory {
 
     @Id
@@ -36,11 +38,14 @@ public class Inventory {
     @Column(nullable = false)
     private LocalDate date;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "INTEGER DEFAULT 0")
     private Integer bookedCount =0;
 
     @Column(nullable = false)
     private Integer totalCount;
+
+    @Column(nullable = false, columnDefinition = "INTEGER DEFAULT 0")
+    private Integer reserveCount;
 
     @Column(nullable = false, precision = 5, scale = 2)
     private BigDecimal surgeFactor;

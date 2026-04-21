@@ -1,15 +1,15 @@
 package com.logic.Service;
 
 import com.logic.DTO.HotelDTO;
-import com.logic.Repository.HotelRepo;
+import com.logic.Repository.HotelRepository;
 import com.logic.entity.Hotel;
+import com.logic.entity.Room;
 import com.logic.exception.ResourceNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
-import org.springframework.ui.Model;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -17,17 +17,19 @@ import java.util.stream.Collectors;
 @Service
 @Slf4j
 @RequiredArgsConstructor
-public class HoteServiceImpl implements HotelService{
+public class HotelServiceImpl implements HotelService{
 
-    private final HotelRepo hotelRepo;
+    private final HotelRepository hotelRepository;
     private final ModelMapper modelMapper;
+    private final InventoryService inventoryService;
+
 
     @Override
     public HotelDTO createNewHotel(HotelDTO hotelDTO) {
         log.info("Creating a new Hotel with name : {}", hotelDTO.getName());
         Hotel hotel = modelMapper.map(hotelDTO,Hotel.class);
         hotel.setActive(false);
-        hotel = hotelRepo.save(hotel);
+        hotel = hotelRepository.save(hotel);
         log.info("Created a new Hotel with ID : {}", hotelDTO.getId());
         return modelMapper.map(hotel, HotelDTO.class);
     }
@@ -35,7 +37,7 @@ public class HoteServiceImpl implements HotelService{
     @Override
     public HotelDTO getHotelByID(Long id) {
         log.info("Getting Hotel details by ID {}", id);
-        Hotel hotel = hotelRepo
+        Hotel hotel = hotelRepository
                 .findById(id)
                 .orElseThrow(()-> new ResourceNotFoundException("Hotel not found with ID :"+id));
         return modelMapper.map(hotel,HotelDTO.class);
@@ -45,40 +47,46 @@ public class HoteServiceImpl implements HotelService{
     @Override
     public HotelDTO updateHotelById(Long id, HotelDTO hotelDTO) {
         log.info("Updating Hotel details by ID {}", id);
-        Hotel hotel = hotelRepo.findById(id).orElseThrow(()-> new ResourceNotFoundException("Hotel not found with this ID" +id));
+        Hotel hotel = hotelRepository.findById(id).orElseThrow(()-> new ResourceNotFoundException("Hotel not found with this ID" +id));
         modelMapper.map(hotelDTO , hotel);
         hotel.setId(id);
-        hotel = hotelRepo.save(hotel);
+        hotel = hotelRepository.save(hotel);
         return modelMapper.map(hotel, HotelDTO.class);
     }
 
     @Override
     @Transactional
     public void deleteHotelById(Long id) {
-        Hotel hotel = hotelRepo
+        Hotel hotel = hotelRepository
                 .findById(id)
                 .orElseThrow(()-> new ResourceNotFoundException("Hotel not found with ID :"+id));
 
-        hotelRepo.deleteById(id);
+        hotelRepository.deleteById(id);
 //        TODO -> Inventory
+        for(Room room: hotel.getRooms()) {
+            inventoryService.deleteFutureInventories(room);
+        }
     }
 
+    @Transactional
     @Override
     public void activateHotel(Long hotelID) {
         log.info("Activationg Hotel details by ID {}", hotelID);
-        Hotel hotel = hotelRepo.findById(hotelID).orElseThrow(()-> new ResourceNotFoundException("Hotel not found with this ID" +hotelID));
+        Hotel hotel = hotelRepository.findById(hotelID).orElseThrow(()-> new ResourceNotFoundException("Hotel not found with this ID" +hotelID));
 
         hotel.setActive(true);
-        hotelRepo.save(hotel);
-
+        hotelRepository.save(hotel);
 //       TODO -> Inventory update ->
+        for(Room room: hotel.getRooms()) {
+            inventoryService.initializeRoomForAYear(room);
+        }
     }
 
     @Override
     public List<HotelDTO> getAllHotels() {
         log.info("Fetching all hotels");
 
-        List<Hotel> hotels = hotelRepo.findAll();
+        List<Hotel> hotels = hotelRepository.findAll();
 
         return hotels.stream()
                 .map(hotel -> modelMapper.map(hotel, HotelDTO.class))

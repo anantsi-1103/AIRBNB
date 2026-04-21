@@ -1,7 +1,6 @@
 package com.logic.Service;
 
 import com.logic.DTO.RoomDTO;
-import com.logic.Repository.RoomRepo;
 
 import java.util.List;
 
