@@ -1,6 +1,8 @@
 package com.logic.Service;
 
 import com.logic.DTO.HotelDTO;
+import com.logic.DTO.HotelInfoDTO;
+import com.logic.DTO.RoomDTO;
 import com.logic.Repository.HotelRepository;
 import com.logic.entity.Hotel;
 import com.logic.entity.Room;
@@ -64,7 +66,7 @@ public class HotelServiceImpl implements HotelService{
         hotelRepository.deleteById(id);
 //        TODO -> Inventory
         for(Room room: hotel.getRooms()) {
-            inventoryService.deleteFutureInventories(room);
+            inventoryService.deleteAllInventories(room);
         }
     }
 
@@ -92,6 +94,22 @@ public class HotelServiceImpl implements HotelService{
                 .map(hotel -> modelMapper.map(hotel, HotelDTO.class))
                 .collect(Collectors.toList());
     }
+
+    @Override
+    public HotelInfoDTO getHotelInfoById(Long hotelId) {
+        Hotel hotel = hotelRepository
+                .findById(hotelId)
+                .orElseThrow(() -> new ResourceNotFoundException("Hotel not found with ID: "+hotelId));
+
+        List<RoomDTO> rooms = hotel.getRooms()
+                .stream()
+                .map((element) -> modelMapper.map(element, RoomDTO.class))
+                .toList();
+
+        // hotel ke data ko DTO Map krdunga
+        return new HotelInfoDTO(modelMapper.map(hotel, HotelDTO.class), rooms);
+    }
+
 
 
 }

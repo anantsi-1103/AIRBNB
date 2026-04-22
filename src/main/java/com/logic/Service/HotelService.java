@@ -1,6 +1,7 @@
 package com.logic.Service;
 
 import com.logic.DTO.HotelDTO;
+import com.logic.DTO.HotelInfoDTO;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -18,4 +19,6 @@ public interface HotelService {
     void activateHotel(Long hotelID);
 
     List<HotelDTO> getAllHotels();
+
+    HotelInfoDTO getHotelInfoById(Long hotelId);
 }

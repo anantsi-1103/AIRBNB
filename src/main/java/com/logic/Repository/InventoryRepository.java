@@ -18,7 +18,7 @@ import java.util.List;
 @Repository
 public interface InventoryRepository extends JpaRepository<Inventory, Long> {
 
-    int deleteByDateAfterAndRoom(LocalDate date, Room room);
+    void deleteByRoom(Room room);
 
     @Query("""
         SELECT DISTINCT i.hotel
@@ -26,7 +26,7 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
                 where i.city = :city
                     AND i.date between :startDate AND :endDate
                         AND i.closed = false
-                            AND (i.totalCount-i.bookedCount - i.reserveCount) >= :roomsCount
+                            AND (i.totalCount-i.bookedCount - i.reservedCount) >= :roomsCount
                        GROUP BY i.hotel, i.room
                            having count(i.date) = :dateCount
     """)
@@ -45,7 +45,7 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
     where i.room.id = :roomId
                       AND i.date between :startDate AND :endDate
                       AND i.closed = false
-                      AND (i.totalCount-i.bookedCount - i.reserveCount) >= :roomsCount
+                      AND (i.totalCount-i.bookedCount - i.reservedCount) >= :roomsCount
                       
 """)
     @Lock(LockModeType.PESSIMISTIC_WRITE)

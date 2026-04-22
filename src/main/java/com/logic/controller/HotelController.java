@@ -2,6 +2,7 @@ package com.logic.controller;
 
 import com.logic.DTO.HotelDTO;
 import com.logic.Service.HotelService;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -44,6 +45,7 @@ public class HotelController {
 
     }
 
+    @Transactional
     @DeleteMapping("/{HotelId}")
     public ResponseEntity<Void> deleteHotelById(@PathVariable Long HotelId){
         hotelService.deleteHotelById(HotelId);

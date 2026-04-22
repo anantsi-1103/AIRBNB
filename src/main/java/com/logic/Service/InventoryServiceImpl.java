@@ -46,6 +46,7 @@ public class InventoryServiceImpl implements InventoryService {
                     .hotel(room.getHotel())
                     .room(room)
                     .bookedCount(0)
+                    .reservedCount(0)
                     .city(room.getHotel().getCity())
                     .date(currentDate)
                     .price(room.getBasePrice())
@@ -67,25 +68,16 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     @Override
-    @Transactional
-    public void deleteFutureInventories(Room room) {
-
-        LocalDate today = LocalDate.now();
-
-        int deletedCount =
-                inventoryRepository.deleteByDateAfterAndRoom(today, room);
-
-        log.info("Deleted {} future inventories for Room ID {}",
-                deletedCount,
-                room.getId());
+    public void deleteAllInventories(Room room) {
+        log.info("Deleting the inventories of room with id: {}", room.getId());
+        inventoryRepository.deleteByRoom(room);
     }
-
     @Override
     public Page<HotelDTO> searchHotels(HotelSearchRequest hotelSearchRequest) {
        log.info("Searching Hotels for {} city , from {} to {}", hotelSearchRequest.getCity(),hotelSearchRequest.getStartDate(),hotelSearchRequest.getEndDate());
 
         Pageable pageable = PageRequest.of(hotelSearchRequest.getPage(), hotelSearchRequest.getSize());
-        long dateCount = ChronoUnit.DAYS.between(hotelSearchRequest.getStartDate(), hotelSearchRequest.getEndDate());
+        long dateCount = ChronoUnit.DAYS.between(hotelSearchRequest.getStartDate(), hotelSearchRequest.getEndDate())+1;
 
         Page<Hotel> hotelPage = inventoryRepository.findHotelsWithAvailableInventory
                 (hotelSearchRequest.getCity(),hotelSearchRequest.getStartDate(),
