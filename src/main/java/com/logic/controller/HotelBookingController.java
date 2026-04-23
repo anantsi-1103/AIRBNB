@@ -28,6 +28,6 @@ public class HotelBookingController {
 
     @PostMapping("{bookingId}/guest")
     public ResponseEntity<BookingDTO> addGuest(@PathVariable Long bookingId, @RequestBody List<GuestDTO> guestDTOList){
-        return ResponseEntity.ok(bookingService.addGuest(bookingId,guestDTOList));
+        return ResponseEntity.ok(bookingService.addGuests(bookingId,guestDTOList));
     }
 }

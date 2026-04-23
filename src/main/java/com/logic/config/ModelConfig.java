@@ -9,7 +9,14 @@ import org.springframework.context.annotation.Configuration;
 public class ModelConfig {
 
     @Bean
-    public ModelMapper modelMapper(){
-        return new ModelMapper();
+    public ModelMapper modelMapper() {
+
+        ModelMapper mapper = new ModelMapper();
+
+        mapper.getConfiguration()
+                .setSkipNullEnabled(true)
+                .setAmbiguityIgnored(true);
+
+        return mapper;
     }
 }

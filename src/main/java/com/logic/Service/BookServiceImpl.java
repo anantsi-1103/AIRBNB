@@ -74,8 +74,13 @@ public class BookServiceImpl implements BookingService{
                 .checkOutDate(bookingRequest.getCheckOutDate())
                 .user(getCurrentUser())
                 .roomsCount(bookingRequest.getRoomsCount())
-                .amount(BigDecimal.TEN)
                 .build();
+        // Calculate actual amount
+        booking.setAmount(
+                calculateBookingAmount(booking)
+        );
+
+        log.info("Calculated booking amount: {}", booking.getAmount());
 
         booking = bookingRepository.save(booking);
         return modelMapper.map(booking, BookingDTO.class);
@@ -83,33 +88,40 @@ public class BookServiceImpl implements BookingService{
     }
 
     @Override
-    public BookingDTO addGuest(Long bookingId, List<GuestDTO> guestDTOList) {
+    @Transactional
+    public BookingDTO addGuests(Long bookingId, List<GuestDTO> guestDtoList) {
 
-        log.info("Adding Guest for booking with ID : {} ", bookingId);
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Booking not found with id: " + bookingId));
 
-        Booking booking = bookingRepository.findById(bookingId).orElseThrow(()->
-                new ResourceNotFoundException("Booking not found with id : "+bookingId));
-
-        if(hasBookingExpired(booking)){
+        if (hasBookingExpired(booking)) {
             throw new IllegalStateException("Booking has already expired");
         }
 
-        if(booking.getBookingStatus() != BookingStatus.RESERVED) {
-            throw new IllegalStateException("Booking is not under reserved state , cannot add guests");
+        if (booking.getBookingStatus() != BookingStatus.RESERVED) {
+            throw new IllegalStateException(
+                    "Booking is not under reserved state");
         }
 
-        for(GuestDTO guestDTO : guestDTOList){
-            Guest guest = modelMapper.map(guestDTO,Guest.class);
+        for (GuestDTO guestDto : guestDtoList) {
+
+            Guest guest = modelMapper.map(guestDto, Guest.class);
+
             guest.setUser(getCurrentUser());
-            guest = guestRepository.save(guest);
+
+            guestRepository.save(guest);
+
             booking.getGuests().add(guest);
         }
 
         booking.setBookingStatus(BookingStatus.GUESTS_ADDED);
-        booking = bookingRepository.save(booking);
+
+        bookingRepository.save(booking);
+
         return modelMapper.map(booking, BookingDTO.class);
     }
-
 
     public boolean hasBookingExpired(Booking booking){
         return booking.getCreatedAt().plusMinutes(10).isBefore((LocalDateTime.now()));
@@ -126,6 +138,33 @@ public class BookServiceImpl implements BookingService{
 //        TODO remove dummy user in future
         user.setId(1L);
         return user;
+    }
+
+    private BigDecimal calculateBookingAmount(Booking booking) {
+
+        BigDecimal pricePerNight =
+                booking.getRoom().getBasePrice();
+
+        long days = ChronoUnit.DAYS.between(
+                booking.getCheckInDate(),
+                booking.getCheckOutDate()
+        ) + 1;
+
+        if (days <= 0) {
+            throw new IllegalArgumentException(
+                    "Check-out date must be after check-in date");
+        }
+
+        BigDecimal totalAmount =
+                pricePerNight
+                        .multiply(BigDecimal.valueOf(days))
+                        .multiply(BigDecimal.valueOf(
+                                booking.getRoomsCount()
+                        ));
+
+
+
+        return totalAmount;
     }
 
 
