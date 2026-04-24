@@ -1,5 +1,6 @@
 package com.logic.advice;
 
+import com.logic.advice.ApiResponse;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageConverter;
@@ -26,7 +27,8 @@ public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
                 .stream()
                 .anyMatch(route -> request.getURI().getPath().contains(route));
 
-        if(body instanceof ApiResponse<?> || isAllowed) {
+        if(body instanceof
+                ApiResponse<?> || isAllowed) {
             return body;
         }
 
