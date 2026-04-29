@@ -1,7 +1,9 @@
 package com.logic.Service;
 
 import com.logic.DTO.HotelDTO;
+import com.logic.DTO.HotelPriceDTO;
 import com.logic.DTO.HotelSearchRequest;
+import com.logic.Repository.HotelMinPriceRepository;
 import com.logic.Repository.InventoryRepository;
 import com.logic.entity.Hotel;
 import com.logic.entity.Inventory;
@@ -28,6 +30,7 @@ public class InventoryServiceImpl implements InventoryService {
 
     private final InventoryRepository inventoryRepository;
     private final ModelMapper modelMapper;
+    private final HotelMinPriceRepository hotelMinPriceRepository;
 
     @Override
     @Transactional
@@ -79,10 +82,11 @@ public class InventoryServiceImpl implements InventoryService {
         Pageable pageable = PageRequest.of(hotelSearchRequest.getPage(), hotelSearchRequest.getSize());
         long dateCount = ChronoUnit.DAYS.between(hotelSearchRequest.getStartDate(), hotelSearchRequest.getEndDate())+1;
 
-        Page<Hotel> hotelPage = inventoryRepository.findHotelsWithAvailableInventory
-                (hotelSearchRequest.getCity(),hotelSearchRequest.getStartDate(),
-                        hotelSearchRequest.getEndDate(),hotelSearchRequest.getRoomsCount(),
-                        dateCount,pageable);
+        // business logic - 90 days
+        Page<HotelPriceDTO> hotelPage =
+                hotelMinPriceRepository.findHotelsWithAvailableInventory(hotelSearchRequest.getCity(),
+                        hotelSearchRequest.getStartDate(), hotelSearchRequest.getEndDate(), hotelSearchRequest.getRoomsCount(),
+                        dateCount, pageable);
 
 //        mapping
         return hotelPage.map((element)-> modelMapper.map(element, HotelDTO.class));

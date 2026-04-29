@@ -1,9 +1,11 @@
 package com.logic.strategy;
 
 import com.logic.entity.Inventory;
+import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 
+@Service
 public class PricingService {
 
 
