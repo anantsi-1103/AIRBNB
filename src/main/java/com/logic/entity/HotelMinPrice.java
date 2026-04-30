@@ -43,4 +43,6 @@ public class HotelMinPrice {
         this.hotel = hotel;
         this.date = date;
     }
+
+
 }

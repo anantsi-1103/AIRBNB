@@ -1,6 +1,7 @@
 package com.logic.Repository;
 
 import com.logic.DTO.HotelPriceDTO;
+import com.logic.entity.Hotel;
 import com.logic.entity.HotelMinPrice;
 import org.springframework.cglib.core.Local;
 import org.springframework.data.domain.Page;
@@ -9,7 +10,11 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+
+
 import java.time.LocalDate;
+
+import java.util.Optional;
 
 public interface HotelMinPriceRepository extends JpaRepository<HotelMinPrice , Long> {
 
@@ -33,4 +38,6 @@ public interface HotelMinPriceRepository extends JpaRepository<HotelMinPrice , L
 
     );
 
+
+    Optional<HotelMinPrice> findByHotelAndDate(Hotel hotel, LocalDate date);
 }

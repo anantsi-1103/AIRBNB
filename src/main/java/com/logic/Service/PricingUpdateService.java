@@ -4,6 +4,7 @@ import com.logic.Repository.HotelMinPriceRepository;
 import com.logic.Repository.HotelRepository;
 import com.logic.Repository.InventoryRepository;
 import com.logic.entity.Hotel;
+import com.logic.entity.HotelMinPrice;
 import com.logic.entity.Inventory;
 import com.logic.strategy.PricingService;
 import jakarta.transaction.Transactional;
@@ -16,7 +17,11 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -68,15 +73,52 @@ public class PricingUpdateService {
     }
 
     private void updateHotelMinPrices(Hotel hotel, List<Inventory> inventoryList, LocalDate startDate, LocalDate endDate) {
+        Map<LocalDate, BigDecimal> dailyMinPrice = inventoryList.stream()
+                .collect(Collectors.groupingBy(
+                        Inventory::getDate,
+                        //get the price on the date -> only the min price
+                        Collectors.mapping(Inventory::getPrice, Collectors.minBy(Comparator.naturalOrder()))
+                ))
+                .entrySet().stream()
+                // key is the date -> value -> or else 0
+                .collect(Collectors.toMap(Map.Entry::getKey, e-> e.getValue().orElse(BigDecimal.ZERO)));
+
+        // date ke sath price ko group krdiya
+        // prepare hotelprices entites in bulk
+
+        List<HotelMinPrice> hotelMinPrices = new ArrayList<>();
+
+        dailyMinPrice.forEach((date, price) -> {
+
+            // find existing record by hotel and date
+            HotelMinPrice hotelPrice =
+                    hotelMinPriceRepository
+                            .findByHotelAndDate(hotel, date)
+
+                            // if not found create new
+                            .orElse(new HotelMinPrice(hotel, date));
+
+            // set price
+            hotelPrice.setPrice(price);
+
+            // add to list
+            hotelMinPrices.add(hotelPrice);
+
+        });
+
+// save all records
+        hotelMinPriceRepository.saveAll(hotelMinPrices);
+
     }
+
 
     private void updateInventoryPrices(List<Inventory> inventoryList) {
         inventoryList.forEach(inventory -> {
             BigDecimal dynamicPrice = pricingService.calculateDynamicPricing(inventory);
             inventory.setPrice(dynamicPrice);
         });
-        
         inventoryRepository.saveAll(inventoryList);
+
     }
 
 
