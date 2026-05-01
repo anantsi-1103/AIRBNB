@@ -49,6 +49,12 @@ public class WebSecurityConfig {
 
 
     @Bean
+    public AccessDeniedHandler accessDeniedHandler() {
+        return (request, response, accessDeniedException) ->
+                handlerExceptionResolver.resolveException(request, response, null, accessDeniedException);
+    }
+
+    @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }

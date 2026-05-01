@@ -30,4 +30,14 @@ public class HotelBookingController {
     public ResponseEntity<BookingDTO> addGuest(@PathVariable Long bookingId, @RequestBody List<GuestDTO> guestDTOList){
         return ResponseEntity.ok(bookingService.addGuests(bookingId,guestDTOList));
     }
+
+    @PostMapping("{bookingId}/confirm")
+    public ResponseEntity<BookingDTO> confirmBooking(@PathVariable Long bookingId){
+        return ResponseEntity.ok(bookingService.confirmBooking(bookingId));
+    }
+
+    @PostMapping("{bookingId}/cancel")
+    public ResponseEntity<BookingDTO> cancelBooking(@PathVariable Long bookingId){
+        return ResponseEntity.ok(bookingService.cancelBooking(bookingId));
+    }
 }

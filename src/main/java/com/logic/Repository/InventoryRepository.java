@@ -20,11 +20,14 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
 
     void deleteByRoom(Room room);
 
+    List<Inventory> findByRoomAndDateBetween(Room room, LocalDate startDate, LocalDate endDate);
+
     @Query("""
         SELECT DISTINCT i.hotel
             from Inventory i
                 where i.city = :city
-                    AND i.date between :startDate AND :endDate
+                    AND i.date >= :startDate
+                    AND i.date < :endDate
                         AND i.closed = false
                             AND (i.totalCount-i.bookedCount - i.reservedCount) >= :roomsCount
                        GROUP BY i.hotel, i.room
@@ -43,7 +46,8 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
     select i
     from Inventory i
     where i.room.id = :roomId
-                      AND i.date between :startDate AND :endDate
+                      AND i.date >= :startDate
+                      AND i.date < :endDate
                       AND i.closed = false
                       AND (i.totalCount-i.bookedCount - i.reservedCount) >= :roomsCount
                       
@@ -54,6 +58,20 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate,
             @Param("roomsCount") Integer roomsCount
+    );
+
+    @Query("""
+    select i
+    from Inventory i
+    where i.room.id = :roomId
+                      AND i.date >= :startDate
+                      AND i.date < :endDate
+""")
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    List<Inventory> findAndLockInventoryByRoomAndDateRange(
+            @Param("roomId") Long roomId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
     );
 
     List<Inventory> findByHotelAndDateBetween(Hotel hotel, LocalDate startDate, LocalDate endDate);

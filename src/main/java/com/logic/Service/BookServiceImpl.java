@@ -7,17 +7,19 @@ import com.logic.Repository.*;
 import com.logic.entity.*;
 import com.logic.entity.enums.BookingStatus;
 import com.logic.exception.ResourceNotFoundException;
+import com.logic.strategy.PricingService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
-import org.springframework.data.domain.PageRequest;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.HashSet;
 import java.util.List;
 
 
@@ -33,6 +35,7 @@ public class BookServiceImpl implements BookingService{
     private final RoomRepository roomRepository;
     private final BookingRepository bookingRepository;
     private final InventoryRepository inventoryRepository;
+    private final PricingService pricingService;
 
     @Override
     @Transactional
@@ -41,20 +44,47 @@ public class BookServiceImpl implements BookingService{
       log.info("Intializing bookinf for hotel : {} , room : {}, date : {} - {}",
               bookingRequest.getHotelId(), bookingRequest.getRoomId(), bookingRequest.getCheckInDate(), bookingRequest.getCheckOutDate());
 
+      if (bookingRequest.getHotelId() == null || bookingRequest.getRoomId() == null) {
+          throw new IllegalArgumentException("Hotel ID and room ID are required");
+      }
+
+      if (bookingRequest.getRoomsCount() == null || bookingRequest.getRoomsCount() <= 0) {
+          throw new IllegalArgumentException("Rooms count must be greater than zero");
+      }
+
+      if (bookingRequest.getCheckInDate() == null || bookingRequest.getCheckOutDate() == null) {
+          throw new IllegalArgumentException("Check-in date and check-out date are required");
+      }
+
       Hotel hotel = hotelRepository.findById(bookingRequest.getHotelId())
               .orElseThrow(()-> new ResourceNotFoundException("Hotel not found with ID : " + bookingRequest.getHotelId()));
 
       Room room = roomRepository.findById(bookingRequest.getRoomId())
               .orElseThrow(()-> new ResourceNotFoundException("Room not found with ID : " + bookingRequest.getRoomId()));
 
+      if (!room.getHotel().getId().equals(hotel.getId())) {
+          throw new IllegalArgumentException("Room does not belong to the selected hotel");
+      }
+
+      if (!Boolean.TRUE.equals(hotel.getActive())) {
+          throw new IllegalStateException("Hotel is not active");
+      }
+
+      long daysCount = ChronoUnit.DAYS.between(bookingRequest.getCheckInDate(), bookingRequest.getCheckOutDate());
+
+      if (daysCount <= 0) {
+          throw new IllegalArgumentException("Check-out date must be after check-in date");
+      }
+
       List<Inventory> inventoryList = inventoryRepository.findAndLockAvailableInventory(bookingRequest.getRoomId(), bookingRequest.getCheckInDate(), bookingRequest.getCheckOutDate(),
               bookingRequest.getRoomsCount());
-
-        long daysCount = ChronoUnit.DAYS.between(bookingRequest.getCheckInDate(), bookingRequest.getCheckOutDate())+ 1;
 
         if(inventoryList.size() != daysCount){
             throw new IllegalStateException("Room is not available anymore");
         }
+
+        inventoryList.forEach(inventory ->
+                inventory.setPrice(pricingService.calculateDynamicPricing(inventory)));
 
         for(Inventory inventory : inventoryList){
             // 0 + 5 = 15
@@ -74,10 +104,11 @@ public class BookServiceImpl implements BookingService{
                 .checkOutDate(bookingRequest.getCheckOutDate())
                 .user(getCurrentUser())
                 .roomsCount(bookingRequest.getRoomsCount())
+                .guests(new HashSet<>())
                 .build();
         // Calculate actual amount
         booking.setAmount(
-                calculateBookingAmount(booking)
+                calculateBookingAmount(inventoryList, bookingRequest.getRoomsCount())
         );
 
         log.info("Calculated booking amount: {}", booking.getAmount());
@@ -113,6 +144,10 @@ public class BookServiceImpl implements BookingService{
 
             guestRepository.save(guest);
 
+            if (booking.getGuests() == null) {
+                booking.setGuests(new HashSet<>());
+            }
+
             booking.getGuests().add(guest);
         }
 
@@ -120,6 +155,52 @@ public class BookServiceImpl implements BookingService{
 
         bookingRepository.save(booking);
 
+        return modelMapper.map(booking, BookingDTO.class);
+    }
+
+    @Override
+    @Transactional
+    public BookingDTO confirmBooking(Long bookingId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + bookingId));
+
+        if (booking.getBookingStatus() == BookingStatus.CONFIRMED) {
+            return modelMapper.map(booking, BookingDTO.class);
+        }
+
+        if (booking.getBookingStatus() == BookingStatus.CANCELLED || booking.getBookingStatus() == BookingStatus.EXPIRED) {
+            throw new IllegalStateException("Booking cannot be confirmed from state: " + booking.getBookingStatus());
+        }
+
+        applyInventoryCountChanges(booking, -booking.getRoomsCount(), booking.getRoomsCount());
+        booking.setBookingStatus(BookingStatus.CONFIRMED);
+
+        booking = bookingRepository.save(booking);
+        return modelMapper.map(booking, BookingDTO.class);
+    }
+
+    @Override
+    @Transactional
+    public BookingDTO cancelBooking(Long bookingId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + bookingId));
+
+        if (booking.getBookingStatus() == BookingStatus.CANCELLED) {
+            return modelMapper.map(booking, BookingDTO.class);
+        }
+
+        if (booking.getBookingStatus() == BookingStatus.EXPIRED) {
+            throw new IllegalStateException("Expired booking cannot be cancelled");
+        }
+
+        if (booking.getBookingStatus() == BookingStatus.CONFIRMED) {
+            applyInventoryCountChanges(booking, 0, -booking.getRoomsCount());
+        } else {
+            applyInventoryCountChanges(booking, -booking.getRoomsCount(), 0);
+        }
+
+        booking.setBookingStatus(BookingStatus.CANCELLED);
+        booking = bookingRepository.save(booking);
         return modelMapper.map(booking, BookingDTO.class);
     }
 
@@ -133,39 +214,54 @@ public class BookServiceImpl implements BookingService{
 
 
     public User getCurrentUser(){
-        User user = new User();
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
-//        TODO remove dummy user in future
-        user.setId(1L);
+        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
+            throw new IllegalStateException("Authenticated user not found");
+        }
+
         return user;
     }
 
-    private BigDecimal calculateBookingAmount(Booking booking) {
-
-        BigDecimal pricePerNight =
-                booking.getRoom().getBasePrice();
-
-        long days = ChronoUnit.DAYS.between(
-                booking.getCheckInDate(),
-                booking.getCheckOutDate()
-        ) + 1;
-
-        if (days <= 0) {
-            throw new IllegalArgumentException(
-                    "Check-out date must be after check-in date");
-        }
-
-        BigDecimal totalAmount =
-                pricePerNight
-                        .multiply(BigDecimal.valueOf(days))
-                        .multiply(BigDecimal.valueOf(
-                                booking.getRoomsCount()
-                        ));
-
-
-
-        return totalAmount;
+    private BigDecimal calculateBookingAmount(List<Inventory> inventoryList, Integer roomsCount) {
+        return inventoryList.stream()
+                .map(Inventory::getPrice)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .multiply(BigDecimal.valueOf(roomsCount));
     }
 
+    private void applyInventoryCountChanges(Booking booking, int reservedDelta, int bookedDelta) {
+        List<Inventory> inventoryList = getLockedBookingInventory(booking);
+
+        for (Inventory inventory : inventoryList) {
+            int nextReservedCount = inventory.getReservedCount() + reservedDelta;
+            int nextBookedCount = inventory.getBookedCount() + bookedDelta;
+
+            if (nextReservedCount < 0 || nextBookedCount < 0 || nextReservedCount + nextBookedCount > inventory.getTotalCount()) {
+                throw new IllegalStateException("Invalid inventory count update for booking id: " + booking.getId());
+            }
+
+            inventory.setReservedCount(nextReservedCount);
+            inventory.setBookedCount(nextBookedCount);
+            inventory.setPrice(pricingService.calculateDynamicPricing(inventory));
+        }
+
+        inventoryRepository.saveAll(inventoryList);
+    }
+
+    private List<Inventory> getLockedBookingInventory(Booking booking) {
+        List<Inventory> inventoryList = inventoryRepository.findAndLockInventoryByRoomAndDateRange(
+                booking.getRoom().getId(),
+                booking.getCheckInDate(),
+                booking.getCheckOutDate()
+        );
+
+        long daysCount = ChronoUnit.DAYS.between(booking.getCheckInDate(), booking.getCheckOutDate());
+        if (inventoryList.size() != daysCount) {
+            throw new IllegalStateException("Inventory records are missing for booking id: " + booking.getId());
+        }
+
+        return inventoryList;
+    }
 
 }

@@ -63,11 +63,11 @@ public class HotelServiceImpl implements HotelService{
                 .findById(id)
                 .orElseThrow(()-> new ResourceNotFoundException("Hotel not found with ID :"+id));
 
-        hotelRepository.deleteById(id);
 //        TODO -> Inventory
         for(Room room: hotel.getRooms()) {
             inventoryService.deleteAllInventories(room);
         }
+        hotelRepository.deleteById(id);
     }
 
     @Transactional

@@ -15,8 +15,13 @@ public class OccupancyPricing implements PricingStrategy {
     public BigDecimal calculatePrice(Inventory inventory) {
         BigDecimal price = wrapped.calculatePrice(inventory);
 
-        // 80 / 100 -> 0.
-        double occupancyRate = (double)inventory.getBookedCount()/ inventory.getTotalCount();
+        if (inventory.getTotalCount() == null || inventory.getTotalCount() <= 0) {
+            return price;
+        }
+
+        int bookedCount = inventory.getBookedCount() == null ? 0 : inventory.getBookedCount();
+        int reservedCount = inventory.getReservedCount() == null ? 0 : inventory.getReservedCount();
+        double occupancyRate = (double) (bookedCount + reservedCount) / inventory.getTotalCount();
 
         if(occupancyRate > 0.8){
             price = price.multiply(BigDecimal.valueOf(1.2));

@@ -39,13 +39,15 @@ public class Inventory {
     private LocalDate date;
 
     @Column(nullable = false, columnDefinition = "INTEGER DEFAULT 0")
+    @Builder.Default
     private Integer bookedCount =0;
 
     @Column(nullable = false)
     private Integer totalCount;
 
     @Column(nullable = false, columnDefinition = "INTEGER DEFAULT 0")
-    private Integer reservedCount;
+    @Builder.Default
+    private Integer reservedCount = 0;
 
     @Column(nullable = false, precision = 5, scale = 2)
     private BigDecimal surgeFactor;
@@ -57,7 +59,8 @@ public class Inventory {
     private String city;
 
     @Column(nullable = false)
-    private Boolean closed;
+    @Builder.Default
+    private Boolean closed = false;
 
     @CreationTimestamp
     private LocalDateTime createdAt;
