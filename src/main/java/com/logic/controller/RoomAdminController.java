@@ -8,12 +8,14 @@ import com.logic.Service.RoomService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
 @RequestMapping("/admin/hotels/{hotelId}/rooms")
+@PreAuthorize("hasRole('HOTEL_MANAGER')")
 @RequiredArgsConstructor
 public class RoomAdminController {
 
