@@ -1,22 +1,27 @@
 package com.logic.Service;
 
-import com.logic.DTO.BookingDTO;
-import com.logic.DTO.BookingRequest;
-import com.logic.DTO.GuestDTO;
+import com.logic.DTO.*;
 import com.logic.Repository.*;
 import com.logic.entity.*;
 import com.logic.entity.enums.BookingStatus;
 import com.logic.exception.ResourceNotFoundException;
+import com.logic.exception.UnAuthorisedException;
 import com.logic.strategy.PricingService;
+import com.razorpay.RazorpayClient;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.HashSet;
@@ -36,6 +41,11 @@ public class BookServiceImpl implements BookingService{
     private final BookingRepository bookingRepository;
     private final InventoryRepository inventoryRepository;
     private final PricingService pricingService;
+    private final CheckoutService checkoutService;
+    private final RazorpayClient razorpayClient;
+
+    @Value("${razorpay.key.secret}")
+    private String razorpayKeySecret;
 
     @Override
     @Transactional
@@ -158,50 +168,101 @@ public class BookServiceImpl implements BookingService{
         return modelMapper.map(booking, BookingDTO.class);
     }
 
+
     @Override
     @Transactional
-    public BookingDTO confirmBooking(Long bookingId) {
-        Booking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + bookingId));
+    public BookingPaymentInitResponseDTO initiatePayments(Long bookingId) {
+        Booking booking = bookingRepository.findById(bookingId).orElseThrow(
+                () -> new ResourceNotFoundException("Booking not found with id: "+bookingId)
+        );
 
-        if (booking.getBookingStatus() == BookingStatus.CONFIRMED) {
-            return modelMapper.map(booking, BookingDTO.class);
+
+        User user = getCurrentUser(); // authenticate
+        if (!user.getId().equals(booking.getUser().getId())) {
+            throw new UnAuthorisedException(
+                    "Booking does not belong to this user with id: " + user.getId()
+            );
+        }
+        if (hasBookingExpired(booking)) {
+            throw new IllegalStateException("Booking has already expired");
         }
 
-        if (booking.getBookingStatus() == BookingStatus.CANCELLED || booking.getBookingStatus() == BookingStatus.EXPIRED) {
-            throw new IllegalStateException("Booking cannot be confirmed from state: " + booking.getBookingStatus());
-        }
+        BookingPaymentInitResponseDTO paymentOrder = checkoutService.createPaymentOrder(booking);
 
-        applyInventoryCountChanges(booking, -booking.getRoomsCount(), booking.getRoomsCount());
-        booking.setBookingStatus(BookingStatus.CONFIRMED);
+        booking.setBookingStatus(BookingStatus.PAYMENTS_PENDING);
+        bookingRepository.save(booking);
 
-        booking = bookingRepository.save(booking);
-        return modelMapper.map(booking, BookingDTO.class);
+        return paymentOrder;
     }
 
     @Override
     @Transactional
-    public BookingDTO cancelBooking(Long bookingId) {
-        Booking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + bookingId));
-
-        if (booking.getBookingStatus() == BookingStatus.CANCELLED) {
-            return modelMapper.map(booking, BookingDTO.class);
+    public BookingDTO verifyPayment(Long bookingId, BookingPaymentVerifyRequestDTO paymentVerifyRequest) {
+        Booking booking = bookingRepository.findById(bookingId).orElseThrow(
+                () -> new ResourceNotFoundException("Booking not found with id: "+bookingId)
+        );
+        User user = getCurrentUser();
+        if (!user.getId().equals(booking.getUser().getId())) {
+            throw new UnAuthorisedException(
+                    "Booking does not belong to this user with id: " + user.getId()
+            );
+        }
+        if (hasBookingExpired(booking)) {
+            throw new IllegalStateException("Booking has already expired");
+        }
+        if (booking.getRazorpayOrderId() == null ||
+                !booking.getRazorpayOrderId().equals(paymentVerifyRequest.getRazorpayOrderId())) {
+            throw new IllegalStateException("Payment order does not belong to this booking");
+        }
+        if (!isValidRazorpaySignature(
+                paymentVerifyRequest.getRazorpayOrderId(),
+                paymentVerifyRequest.getRazorpayPaymentId(),
+                paymentVerifyRequest.getRazorpaySignature()
+        )) {
+            throw new IllegalStateException("Razorpay payment signature verification failed");
         }
 
-        if (booking.getBookingStatus() == BookingStatus.EXPIRED) {
-            throw new IllegalStateException("Expired booking cannot be cancelled");
-        }
-
-        if (booking.getBookingStatus() == BookingStatus.CONFIRMED) {
-            applyInventoryCountChanges(booking, 0, -booking.getRoomsCount());
-        } else {
-            applyInventoryCountChanges(booking, -booking.getRoomsCount(), 0);
-        }
-
-        booking.setBookingStatus(BookingStatus.CANCELLED);
-        booking = bookingRepository.save(booking);
+        confirmPaidBooking(booking, paymentVerifyRequest.getRazorpayPaymentId());
         return modelMapper.map(booking, BookingDTO.class);
+    }
+
+    private void confirmPaidBooking(Booking booking, String razorpayPaymentId) {
+        booking.setRazorpayPaymentId(razorpayPaymentId);
+        booking.setBookingStatus(BookingStatus.CONFIRMED);
+        bookingRepository.save(booking);
+
+        inventoryRepository.findAndLockReservedInventory(booking.getRoom().getId(), booking.getCheckInDate(),
+                booking.getCheckOutDate(), booking.getRoomsCount());
+
+        inventoryRepository.confirmBooking(booking.getRoom().getId(), booking.getCheckInDate(),
+                booking.getCheckOutDate(), booking.getRoomsCount());
+
+        log.info("Successfully confirmed the booking for Booking ID: {}", booking.getId());
+    }
+
+    private boolean isValidRazorpaySignature(String orderId, String paymentId, String signature) {
+        try {
+            String expectedSignature = hmacSha256(orderId + "|" + paymentId, razorpayKeySecret);
+            return MessageDigest.isEqual(
+                    expectedSignature.getBytes(StandardCharsets.UTF_8),
+                    signature.getBytes(StandardCharsets.UTF_8)
+            );
+        } catch (Exception e) {
+            throw new RuntimeException("Could not verify Razorpay payment signature", e);
+        }
+    }
+
+    private String hmacSha256(String payload, String secret) throws Exception {
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+        byte[] hash = mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
+        StringBuilder hex = new StringBuilder(hash.length * 2);
+
+        for (byte currentByte : hash) {
+            hex.append(String.format("%02x", currentByte));
+        }
+
+        return hex.toString();
     }
 
     public boolean hasBookingExpired(Booking booking){

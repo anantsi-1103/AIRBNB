@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hotel Booking Payment</title>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 560px;
+      margin: 40px auto;
+      padding: 0 16px;
+      color: #222;
+    }
+
+    label {
+      display: block;
+      margin-top: 16px;
+      font-weight: 600;
+    }
+
+    input,
+    textarea,
+    button {
+      width: 100%;
+      box-sizing: border-box;
+      margin-top: 6px;
+      padding: 10px;
+      font-size: 15px;
+    }
+
+    textarea {
+      min-height: 90px;
+      resize: vertical;
+    }
+
+    button {
+      margin-top: 18px;
+      border: 0;
+      background: #0a7cff;
+      color: #fff;
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    #status {
+      margin-top: 18px;
+      white-space: pre-wrap;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+<h2>Hotel Booking Payment</h2>
+
+<label for="apiBaseUrl">API base URL</label>
+<input id="apiBaseUrl" value="http://localhost:8083/api/v1">
+
+<label for="bookingId">Booking ID</label>
+<input id="bookingId" type="number" value="5">
+
+<label for="accessToken">Access token from login</label>
+<textarea id="accessToken" placeholder="Paste login response accessToken here"></textarea>
+
+<button id="payButton" type="button">Pay Now</button>
+
+<div id="status"></div>
+
+<script>
+  const statusBox = document.getElementById("status");
+  const payButton = document.getElementById("payButton");
+
+  function setStatus(message) {
+    statusBox.textContent = message;
+  }
+
+  function unwrapApiResponse(payload) {
+    return payload && Object.prototype.hasOwnProperty.call(payload, "data")
+      ? payload.data
+      : payload;
+  }
+
+  async function readJsonResponse(response) {
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const message = payload?.error?.message || payload?.message || response.statusText;
+      throw new Error(`HTTP ${response.status}: ${message}`);
+    }
+
+    return unwrapApiResponse(payload);
+  }
+
+  function authHeaders() {
+    const token = document.getElementById("accessToken").value.trim();
+
+    if (!token) {
+      throw new Error("Paste your login accessToken before starting payment.");
+    }
+
+    return {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`
+    };
+  }
+
+  async function startPayment() {
+    const apiBaseUrl = document.getElementById("apiBaseUrl").value.replace(/\/$/, "");
+    const bookingId = document.getElementById("bookingId").value.trim();
+
+    if (!bookingId) {
+      throw new Error("Enter a booking ID.");
+    }
+
+    setStatus("Creating Razorpay order...");
+
+    const orderResponse = await fetch(`${apiBaseUrl}/bookings/${bookingId}/payments`, {
+      method: "POST",
+      headers: authHeaders()
+    });
+    const order = await readJsonResponse(orderResponse);
+
+    if (!order?.key || !order?.orderId || !order?.amount) {
+      throw new Error(`Invalid payment order response:\n${JSON.stringify(order, null, 2)}`);
+    }
+
+    const options = {
+      key: order.key,
+      amount: order.amount,
+      currency: order.currency || "INR",
+      name: order.name || "Air Stay",
+      description: order.description || "Hotel Booking Payment",
+      order_id: order.orderId,
+      handler: async function (paymentResponse) {
+        setStatus("Payment completed. Verifying with backend...");
+
+        const verifyResponse = await fetch(`${apiBaseUrl}/bookings/${bookingId}/payments/verify`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({
+            razorpayPaymentId: paymentResponse.razorpay_payment_id,
+            razorpayOrderId: paymentResponse.razorpay_order_id,
+            razorpaySignature: paymentResponse.razorpay_signature
+          })
+        });
+        const booking = await readJsonResponse(verifyResponse);
+
+        setStatus(`Payment verified and booking confirmed.\n\n${JSON.stringify(booking, null, 2)}`);
+      },
+      modal: {
+        ondismiss: function () {
+          setStatus("Payment popup closed before completion.");
+        }
+      }
+    };
+
+    const razorpay = new Razorpay(options);
+    razorpay.open();
+  }
+
+  payButton.addEventListener("click", async () => {
+    payButton.disabled = true;
+    try {
+      await startPayment();
+    } catch (error) {
+      console.error(error);
+      setStatus(error.message);
+    } finally {
+      payButton.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

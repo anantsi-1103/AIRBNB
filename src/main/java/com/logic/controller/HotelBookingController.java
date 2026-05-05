@@ -1,18 +1,17 @@
 package com.logic.controller;
 
 
-import com.logic.DTO.BookingDTO;
-import com.logic.DTO.BookingRequest;
-import com.logic.DTO.GuestDTO;
-import com.logic.DTO.HotelInfoDTO;
+import com.logic.DTO.*;
 import com.logic.Service.BookingService;
 import com.logic.entity.Guest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.json.JSONObject;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/bookings")
@@ -31,13 +30,18 @@ public class HotelBookingController {
         return ResponseEntity.ok(bookingService.addGuests(bookingId,guestDTOList));
     }
 
-    @PostMapping("{bookingId}/confirm")
-    public ResponseEntity<BookingDTO> confirmBooking(@PathVariable Long bookingId){
-        return ResponseEntity.ok(bookingService.confirmBooking(bookingId));
+    @PostMapping("/{bookingId}/payments")
+    public ResponseEntity<BookingPaymentInitResponseDTO> initiatePayment(@PathVariable Long bookingId) {
+        return ResponseEntity.ok(bookingService.initiatePayments(bookingId));
     }
 
-    @PostMapping("{bookingId}/cancel")
-    public ResponseEntity<BookingDTO> cancelBooking(@PathVariable Long bookingId){
-        return ResponseEntity.ok(bookingService.cancelBooking(bookingId));
+    @PostMapping("/{bookingId}/payments/verify")
+    public ResponseEntity<BookingDTO> verifyPayment(@PathVariable Long bookingId,
+                                                    @RequestBody BookingPaymentVerifyRequestDTO paymentVerifyRequest) {
+        return ResponseEntity.ok(bookingService.verifyPayment(bookingId, paymentVerifyRequest));
     }
+
+
+
+
 }

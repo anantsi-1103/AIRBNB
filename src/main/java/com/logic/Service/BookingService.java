@@ -1,8 +1,6 @@
 package com.logic.Service;
 
-import com.logic.DTO.BookingDTO;
-import com.logic.DTO.BookingRequest;
-import com.logic.DTO.GuestDTO;
+import com.logic.DTO.*;
 
 import java.util.List;
 
@@ -12,7 +10,7 @@ public interface BookingService {
 //    Kitne guest ->
     BookingDTO addGuests(Long bookingId , List<GuestDTO> guestDTOList);
 
-    BookingDTO confirmBooking(Long bookingId);
+    BookingPaymentInitResponseDTO initiatePayments(Long bookingId);
 
-    BookingDTO cancelBooking(Long bookingId);
+    BookingDTO verifyPayment(Long bookingId, BookingPaymentVerifyRequestDTO paymentVerifyRequest);
 }

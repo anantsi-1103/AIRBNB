@@ -94,14 +94,11 @@
             <scope>runtime</scope>
         </dependency>
 
-
         <dependency>
-            <groupId>com.stripe</groupId>
-            <artifactId>stripe-java</artifactId>
-            <version>28.2.0</version>
+            <groupId>com.razorpay</groupId>
+            <artifactId>razorpay-java</artifactId>
+            <version>1.4.8</version>
         </dependency>
-
-
     </dependencies>
 
     <build>
