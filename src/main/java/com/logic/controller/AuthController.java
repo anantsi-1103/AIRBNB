@@ -11,6 +11,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -35,8 +36,17 @@ public class AuthController {
 
         Cookie cookie = new Cookie("refreshToken", token[1]);
         cookie.setHttpOnly(true);
+        cookie.setPath("/");
+        cookie.setMaxAge(60 * 60 * 24 * 30 * 6);
 
         httpServletResponse.addCookie(cookie);
         return ResponseEntity.ok(new LoginResponseDTO(token[0]));
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<LoginResponseDTO> refreshToken(
+            @CookieValue(name = "refreshToken") String refreshToken
+    ) {
+        return ResponseEntity.ok(new LoginResponseDTO(authService.refreshToken(refreshToken)));
     }
 }

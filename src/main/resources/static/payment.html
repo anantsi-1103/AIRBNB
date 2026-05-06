@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hotel Booking Payment</title>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 640px;
+      margin: 40px auto;
+      padding: 0 16px;
+      color: #222;
+    }
+
+    fieldset {
+      border: 1px solid #ddd;
+      margin: 18px 0;
+      padding: 16px;
+    }
+
+    legend {
+      font-weight: 700;
+      padding: 0 6px;
+    }
+
+    label {
+      display: block;
+      margin-top: 14px;
+      font-weight: 600;
+    }
+
+    input,
+    textarea,
+    button {
+      width: 100%;
+      box-sizing: border-box;
+      margin-top: 6px;
+      padding: 10px;
+      font-size: 15px;
+    }
+
+    textarea {
+      min-height: 82px;
+      resize: vertical;
+    }
+
+    button {
+      border: 0;
+      background: #0a7cff;
+      color: #fff;
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    button.secondary {
+      background: #444;
+    }
+
+    #status {
+      margin-top: 18px;
+      white-space: pre-wrap;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+<h2>Hotel Booking Payment</h2>
+
+<label for="apiBaseUrl">API base URL</label>
+<input id="apiBaseUrl">
+
+<fieldset>
+  <legend>Login</legend>
+  <label for="email">Email</label>
+  <input id="email" type="email" autocomplete="username">
+
+  <label for="password">Password</label>
+  <input id="password" type="password" autocomplete="current-password">
+
+  <button id="loginButton" class="secondary" type="button">Login And Use Token</button>
+  <button id="refreshButton" class="secondary" type="button">Refresh Token</button>
+</fieldset>
+
+<fieldset>
+  <legend>Payment</legend>
+  <label for="bookingId">Booking ID</label>
+  <input id="bookingId" type="number" value="5">
+
+  <label for="accessToken">Access token</label>
+  <textarea id="accessToken" placeholder="Login above or paste accessToken here"></textarea>
+
+  <button id="payButton" type="button">Pay Now</button>
+</fieldset>
+
+<div id="status"></div>
+
+<script>
+  const statusBox = document.getElementById("status");
+  const loginButton = document.getElementById("loginButton");
+  const refreshButton = document.getElementById("refreshButton");
+  const payButton = document.getElementById("payButton");
+  const apiBaseUrlInput = document.getElementById("apiBaseUrl");
+  const savedToken = localStorage.getItem("airbnbAccessToken");
+
+  const backendOrigin = window.location.origin.startsWith("http") ? window.location.origin : "http://localhost:8083";
+  apiBaseUrlInput.value = `${backendOrigin}/api/v1`;
+
+  if (savedToken) {
+    document.getElementById("accessToken").value = savedToken;
+  }
+
+  function setStatus(message) {
+    statusBox.textContent = message;
+  }
+
+  function apiBaseUrl() {
+    return apiBaseUrlInput.value.replace(/\/$/, "");
+  }
+
+  function unwrapApiResponse(payload) {
+    return payload && Object.prototype.hasOwnProperty.call(payload, "data")
+      ? payload.data
+      : payload;
+  }
+
+  async function readJsonResponse(response) {
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const message = payload?.error?.message || payload?.message || response.statusText || "Request failed";
+      throw new Error(`HTTP ${response.status}: ${message}`);
+    }
+
+    return unwrapApiResponse(payload);
+  }
+
+  function authHeaders() {
+    const token = document.getElementById("accessToken").value.trim();
+
+    if (!token) {
+      throw new Error("Login first or paste your accessToken.");
+    }
+
+    return {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`
+    };
+  }
+
+  async function login() {
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+
+    if (!email || !password) {
+      throw new Error("Enter email and password.");
+    }
+
+    setStatus("Logging in...");
+
+    const response = await fetch(`${apiBaseUrl()}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ email, password })
+    });
+    const loginData = await readJsonResponse(response);
+
+    if (!loginData?.accessToken) {
+      throw new Error(`Login response did not include accessToken:\n${JSON.stringify(loginData, null, 2)}`);
+    }
+
+    localStorage.setItem("airbnbAccessToken", loginData.accessToken);
+    document.getElementById("accessToken").value = loginData.accessToken;
+    setStatus("Login successful. Token is ready for payment.");
+  }
+
+  async function refreshToken() {
+    setStatus("Refreshing token...");
+
+    const response = await fetch(`${apiBaseUrl()}/auth/refresh`, {
+      method: "POST",
+      credentials: "include"
+    });
+    const loginData = await readJsonResponse(response);
+
+    if (!loginData?.accessToken) {
+      throw new Error(`Refresh response did not include accessToken:\n${JSON.stringify(loginData, null, 2)}`);
+    }
+
+    localStorage.setItem("airbnbAccessToken", loginData.accessToken);
+    document.getElementById("accessToken").value = loginData.accessToken;
+    setStatus("Token refreshed. You can continue.");
+  }
+
+  async function startPayment() {
+    if (typeof Razorpay === "undefined") {
+      throw new Error("Razorpay checkout script did not load. Check your internet connection.");
+    }
+
+    const bookingId = document.getElementById("bookingId").value.trim();
+
+    if (!bookingId) {
+      throw new Error("Enter a booking ID.");
+    }
+
+    setStatus("Creating Razorpay order...");
+
+    const orderResponse = await fetch(`${apiBaseUrl()}/bookings/${bookingId}/payments`, {
+      method: "POST",
+      headers: authHeaders(),
+      credentials: "include"
+    });
+    const order = await readJsonResponse(orderResponse);
+
+    if (!order?.key || !order?.orderId || !order?.amount) {
+      throw new Error(`Invalid payment order response:\n${JSON.stringify(order, null, 2)}`);
+    }
+
+    const options = {
+      key: order.key,
+      amount: order.amount,
+      currency: order.currency || "INR",
+      name: order.name || "Air Stay",
+      description: order.description || "Hotel Booking Payment",
+      order_id: order.orderId,
+      method: "card",
+      retry: {
+        enabled: false
+      },
+      prefill: {
+        name: document.getElementById("email").value.split("@")[0] || "Test User",
+        email: document.getElementById("email").value.trim() || "test@example.com",
+        contact: "9999999999"
+      },
+      handler: async function (paymentResponse) {
+        setStatus("Payment completed. Verifying with backend...");
+
+        const verifyResponse = await fetch(`${apiBaseUrl()}/bookings/${bookingId}/payments/verify`, {
+          method: "POST",
+          headers: authHeaders(),
+          credentials: "include",
+          body: JSON.stringify({
+            razorpayPaymentId: paymentResponse.razorpay_payment_id,
+            razorpayOrderId: paymentResponse.razorpay_order_id,
+            razorpaySignature: paymentResponse.razorpay_signature
+          })
+        });
+        const booking = await readJsonResponse(verifyResponse);
+
+        setStatus(`Payment verified and booking confirmed.\nInvoice: ${apiBaseUrl()}/bookings/${bookingId}/invoice\n\n${JSON.stringify(booking, null, 2)}`);
+      },
+      modal: {
+        ondismiss: function () {
+          setStatus("Payment popup closed before completion.");
+        }
+      }
+    };
+
+    const razorpay = new Razorpay(options);
+    razorpay.on("payment.failed", async function (failedResponse) {
+      const error = failedResponse.error || {};
+      await fetch(`${apiBaseUrl()}/bookings/${bookingId}/payments/failed`, {
+        method: "POST",
+        headers: authHeaders(),
+        credentials: "include",
+        body: JSON.stringify({
+          razorpayOrderId: error.metadata?.order_id || order.orderId,
+          razorpayPaymentId: error.metadata?.payment_id,
+          code: error.code,
+          description: error.description,
+          source: error.source,
+          step: error.step,
+          reason: error.reason
+        })
+      }).catch(console.error);
+
+      setStatus(`Payment failed and was saved in payment history.\n${error.description || "Payment failed"}`);
+    });
+    razorpay.open();
+  }
+
+  async function runButton(button, action) {
+    button.disabled = true;
+    try {
+      await action();
+    } catch (error) {
+      console.error(error);
+      setStatus(error.message);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  loginButton.addEventListener("click", () => runButton(loginButton, login));
+  refreshButton.addEventListener("click", () => runButton(refreshButton, refreshToken));
+  payButton.addEventListener("click", () => runButton(payButton, startPayment));
+</script>
+</body>
+</html>

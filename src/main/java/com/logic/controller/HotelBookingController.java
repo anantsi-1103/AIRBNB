@@ -3,15 +3,14 @@ package com.logic.controller;
 
 import com.logic.DTO.*;
 import com.logic.Service.BookingService;
-import com.logic.entity.Guest;
+import com.logic.Service.PaymentService;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.json.JSONObject;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/bookings")
@@ -19,6 +18,7 @@ import java.util.Map;
 public class HotelBookingController {
 
     private final BookingService bookingService;
+    private final PaymentService paymentService;
 
     @PostMapping("/init")
     public ResponseEntity<BookingDTO> initialiseBooking(@RequestBody BookingRequest bookingRequest){
@@ -41,6 +41,27 @@ public class HotelBookingController {
         return ResponseEntity.ok(bookingService.verifyPayment(bookingId, paymentVerifyRequest));
     }
 
+    @PostMapping("/{bookingId}/payments/failed")
+    public ResponseEntity<PaymentDTO> recordFailedPayment(
+            @PathVariable Long bookingId,
+            @RequestBody PaymentFailureRequestDTO failureRequest
+    ) {
+        return ResponseEntity.ok(paymentService.recordFailedPayment(bookingId, failureRequest));
+    }
+
+    @PostMapping("/{bookingId}/cancel")
+    public ResponseEntity<BookingDTO> cancelOrRefundBooking(@PathVariable Long bookingId) {
+        return ResponseEntity.ok(paymentService.cancelOrRefundBooking(bookingId));
+    }
+
+    @GetMapping("/{bookingId}/invoice")
+    public ResponseEntity<byte[]> downloadInvoice(@PathVariable Long bookingId) {
+        InvoiceDTO invoice = paymentService.buildInvoice(bookingId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + invoice.getFileName() + "\"")
+                .contentType(MediaType.TEXT_PLAIN)
+                .body(invoice.getContent());
+    }
 
 
 

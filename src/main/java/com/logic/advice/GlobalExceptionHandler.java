@@ -1,6 +1,7 @@
 package com.logic.advice;
 
 import com.logic.exception.ResourceNotFoundException;
+import com.logic.exception.UnAuthorisedException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -61,14 +62,15 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({
             AccessDeniedException.class,
-            AuthorizationDeniedException.class
+            AuthorizationDeniedException.class,
+            UnAuthorisedException.class
     })
     public ResponseEntity<ApiResponse<ApiError>> handleAccessDenied(
             RuntimeException ex,
             HttpServletRequest request
     ) {
         return buildErrorResponse(
-                "You are not allowed to access this resource",
+                ex.getMessage(),
                 HttpStatus.FORBIDDEN,
                 request
         );

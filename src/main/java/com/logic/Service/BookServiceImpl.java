@@ -4,6 +4,7 @@ import com.logic.DTO.*;
 import com.logic.Repository.*;
 import com.logic.entity.*;
 import com.logic.entity.enums.BookingStatus;
+import com.logic.entity.enums.PaymentStatus;
 import com.logic.exception.ResourceNotFoundException;
 import com.logic.exception.UnAuthorisedException;
 import com.logic.strategy.PricingService;
@@ -40,8 +41,10 @@ public class BookServiceImpl implements BookingService{
     private final RoomRepository roomRepository;
     private final BookingRepository bookingRepository;
     private final InventoryRepository inventoryRepository;
+    private final PaymentRepository paymentRepository;
     private final PricingService pricingService;
     private final CheckoutService checkoutService;
+    private final PaymentService paymentService;
     private final RazorpayClient razorpayClient;
 
     @Value("${razorpay.key.secret}")
@@ -222,8 +225,28 @@ public class BookServiceImpl implements BookingService{
             throw new IllegalStateException("Razorpay payment signature verification failed");
         }
 
-        confirmPaidBooking(booking, paymentVerifyRequest.getRazorpayPaymentId());
-        return modelMapper.map(booking, BookingDTO.class);
+        paymentService.confirmPaymentFromWebhook(
+                paymentVerifyRequest.getRazorpayOrderId(),
+                paymentVerifyRequest.getRazorpayPaymentId()
+        );
+
+        Booking confirmedBooking = bookingRepository.findById(bookingId).orElse(booking);
+        return modelMapper.map(confirmedBooking, BookingDTO.class);
+    }
+
+    private void confirmPaymentRecord(Booking booking, BookingPaymentVerifyRequestDTO paymentVerifyRequest) {
+        Payment payment = paymentRepository.findByRazorpayOrderId(paymentVerifyRequest.getRazorpayOrderId())
+                .orElseGet(() -> Payment.builder()
+                        .booking(booking)
+                        .amount(booking.getAmount())
+                        .currency("INR")
+                        .razorpayOrderId(paymentVerifyRequest.getRazorpayOrderId())
+                        .build());
+
+        payment.setBooking(booking);
+        payment.setRazorpayPaymentId(paymentVerifyRequest.getRazorpayPaymentId());
+        payment.setPaymentStatus(PaymentStatus.CONFIRMED);
+        paymentRepository.save(payment);
     }
 
     private void confirmPaidBooking(Booking booking, String razorpayPaymentId) {

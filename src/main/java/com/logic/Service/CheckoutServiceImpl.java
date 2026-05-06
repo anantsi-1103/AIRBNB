@@ -2,8 +2,10 @@ package com.logic.Service;
 
 import com.logic.DTO.BookingPaymentInitResponseDTO;
 import com.logic.Repository.BookingRepository;
+import com.logic.Repository.PaymentRepository;
 import com.logic.entity.Booking;
-import com.logic.entity.User;
+import com.logic.entity.Payment;
+import com.logic.entity.enums.PaymentStatus;
 import com.razorpay.Order;
 import com.razorpay.RazorpayClient;
 import com.razorpay.RazorpayException;
@@ -11,7 +13,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -23,6 +24,7 @@ import java.math.RoundingMode;
 public class CheckoutServiceImpl implements CheckoutService {
 
     private final BookingRepository bookingRepository;
+    private final PaymentRepository paymentRepository;
     private final RazorpayClient razorpayClient;
 
     @Value("${razorpay.key.id}")
@@ -69,6 +71,13 @@ public class CheckoutServiceImpl implements CheckoutService {
 
             booking.setRazorpayOrderId(orderId);
             bookingRepository.save(booking);
+            paymentRepository.save(Payment.builder()
+                    .booking(booking)
+                    .amount(booking.getAmount())
+                    .currency(currency)
+                    .razorpayOrderId(orderId)
+                    .paymentStatus(PaymentStatus.PENDING)
+                    .build());
 
             log.info("Razorpay order created for booking ID: {}", booking.getId());
             return new BookingPaymentInitResponseDTO(razorpayKeyId, orderId, booking.getId(), amountInPaise, currency, businessName, description);
