@@ -19,4 +19,5 @@ public class BookingDTO {
     private BookingStatus bookingStatus;
     private Set<GuestDTO> guests;
     private BigDecimal amount;
+
 }

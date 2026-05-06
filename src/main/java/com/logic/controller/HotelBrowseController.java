@@ -1,8 +1,9 @@
 package com.logic.controller;
 
 
-import com.logic.DTO.HotelDTO;
 import com.logic.DTO.HotelInfoDTO;
+import com.logic.DTO.HotelInfoRequestDTO;
+import com.logic.DTO.HotelPriceResponseDTO;
 import com.logic.DTO.HotelSearchRequest;
 import com.logic.Service.HotelService;
 import com.logic.Service.InventoryService;
@@ -19,17 +20,18 @@ public class HotelBrowseController {
     private final HotelService hotelService;
 
     @PostMapping("/search")
-    public ResponseEntity<Page<HotelDTO>> searchHotels(
+    public ResponseEntity<Page<HotelPriceResponseDTO>> searchHotels(
             @RequestBody HotelSearchRequest hotelSearchRequest) {
 
-        Page<HotelDTO> page =
-                inventoryService.searchHotels(hotelSearchRequest);
+        Page<HotelPriceResponseDTO> page =
+                inventoryService.searchHotelsWithPrices(hotelSearchRequest);
 
         return ResponseEntity.ok(page);
     }
 
     @GetMapping("/{hotelId}/info")
-    public ResponseEntity<HotelInfoDTO> getHotelInfo(@PathVariable Long hotelId) {
-        return ResponseEntity.ok(hotelService.getHotelInfoById(hotelId));
+    public ResponseEntity<HotelInfoDTO> getHotelInfo(@PathVariable Long hotelId,
+                                                     @RequestBody(required = false) HotelInfoRequestDTO hotelInfoRequestDTO) {
+        return ResponseEntity.ok(hotelService.getHotelInfoById(hotelId, hotelInfoRequestDTO));
     }
 }

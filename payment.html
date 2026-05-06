@@ -250,7 +250,7 @@
           const booking = await readJson(verifyRes);
 
           setStatus(
-                  `✅ Payment Successful!
+                  ` Payment Successful!
 
 Booking ID: ${booking.id}
 Amount: ₹${booking.amount}
@@ -266,7 +266,7 @@ Invoice: ${apiBaseUrl()}/bookings/${bookingId}/invoice`
 
         modal: {
           ondismiss: function () {
-            setStatus("Payment popup closed ❌");
+            setStatus("Payment popup closed ");
           }
         }
       };
@@ -274,7 +274,7 @@ Invoice: ${apiBaseUrl()}/bookings/${bookingId}/invoice`
       const rzp = new Razorpay(options);
 
       rzp.on("payment.failed", function (err) {
-        setStatus("Payment Failed ❌\n" + (err.error?.description || ""));
+        setStatus("Payment Failed \n" + (err.error?.description || ""));
       });
 
       rzp.open();

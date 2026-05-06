@@ -63,6 +63,11 @@ public class HotelBookingController {
                 .body(invoice.getContent());
     }
 
+    @GetMapping("/{bookingId}/status")
+    public ResponseEntity<BookingStatusResponseDTO> getBookingStatus(@PathVariable Long bookingId) {
+        return ResponseEntity.ok(new BookingStatusResponseDTO(bookingService.getBookingStatus(bookingId)));
+    }
+
 
 
 }

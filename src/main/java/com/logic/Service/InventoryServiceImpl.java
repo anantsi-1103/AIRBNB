@@ -1,12 +1,17 @@
 package com.logic.Service;
 
 import com.logic.DTO.HotelDTO;
+import com.logic.DTO.HotelPriceResponseDTO;
 import com.logic.DTO.HotelSearchRequest;
+import com.logic.DTO.InventoryDTO;
 import com.logic.DTO.InventoryUpdateRequest;
+import com.logic.Repository.HotelMinPriceRepository;
 import com.logic.Repository.InventoryRepository;
+import com.logic.Repository.RoomRepository;
 import com.logic.entity.Hotel;
 import com.logic.entity.Inventory;
 import com.logic.entity.Room;
+import com.logic.exception.ResourceNotFoundException;
 import com.logic.strategy.PricingService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +36,8 @@ import java.util.stream.Collectors;
 public class InventoryServiceImpl implements InventoryService {
 
     private final InventoryRepository inventoryRepository;
+    private final RoomRepository roomRepository;
+    private final HotelMinPriceRepository hotelMinPriceRepository;
     private final ModelMapper modelMapper;
     private final PricingService pricingService;
 
@@ -122,6 +129,37 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     @Override
+    public Page<HotelPriceResponseDTO> searchHotelsWithPrices(HotelSearchRequest hotelSearchRequest) {
+        log.info("Searching Hotels with prices for {} city, from {} to {}",
+                hotelSearchRequest.getCity(), hotelSearchRequest.getStartDate(), hotelSearchRequest.getEndDate());
+
+        validateHotelSearchRequest(hotelSearchRequest);
+
+        Pageable pageable = PageRequest.of(hotelSearchRequest.getPage(), hotelSearchRequest.getSize());
+        long dateCount = ChronoUnit.DAYS.between(hotelSearchRequest.getStartDate(), hotelSearchRequest.getEndDate());
+
+        return hotelMinPriceRepository.findHotelsWithAvailableInventory(
+                hotelSearchRequest.getCity(),
+                hotelSearchRequest.getStartDate(),
+                hotelSearchRequest.getEndDate(),
+                hotelSearchRequest.getRoomsCount(),
+                dateCount,
+                pageable
+        ).map(hotelPriceDTO -> {
+            Hotel hotel = hotelPriceDTO.getHotel();
+            return new HotelPriceResponseDTO(
+                    hotel.getId(),
+                    hotel.getName(),
+                    hotel.getCity(),
+                    hotel.getPhotos(),
+                    hotel.getAmenities(),
+                    hotel.getContactInfo(),
+                    hotelPriceDTO.getPrice()
+            );
+        });
+    }
+
+    @Override
     @Transactional
     public void updateRoomInventory(Long roomId, InventoryUpdateRequest inventoryUpdateRequest) {
         if (inventoryUpdateRequest.getStartDate() == null || inventoryUpdateRequest.getEndDate() == null) {
@@ -165,5 +203,35 @@ public class InventoryServiceImpl implements InventoryService {
         }
 
         inventoryRepository.saveAll(inventories);
+    }
+
+    @Override
+    public List<InventoryDTO> getAllInventoryByRoom(Long roomId) {
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new ResourceNotFoundException("Room not found with id: " + roomId));
+
+        return inventoryRepository.findByRoomOrderByDate(room)
+                .stream()
+                .map(inventory -> modelMapper.map(inventory, InventoryDTO.class))
+                .toList();
+    }
+
+    private void validateHotelSearchRequest(HotelSearchRequest hotelSearchRequest) {
+        if (hotelSearchRequest.getCity() == null || hotelSearchRequest.getCity().isBlank()) {
+            throw new IllegalArgumentException("City is required");
+        }
+
+        if (hotelSearchRequest.getRoomsCount() == null || hotelSearchRequest.getRoomsCount() <= 0) {
+            throw new IllegalArgumentException("Rooms count must be greater than zero");
+        }
+
+        if (hotelSearchRequest.getStartDate() == null || hotelSearchRequest.getEndDate() == null) {
+            throw new IllegalArgumentException("Start date and end date are required");
+        }
+
+        long dateCount = ChronoUnit.DAYS.between(hotelSearchRequest.getStartDate(), hotelSearchRequest.getEndDate());
+        if (dateCount <= 0) {
+            throw new IllegalArgumentException("End date must be after start date");
+        }
     }
 }
