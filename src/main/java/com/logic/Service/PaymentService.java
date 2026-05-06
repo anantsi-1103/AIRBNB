@@ -21,6 +21,7 @@ import com.razorpay.RazorpayException;
 import com.razorpay.Refund;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.json.JSONObject;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,6 +42,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PaymentService {
 
     private final PaymentRepository paymentRepository;
@@ -243,30 +245,59 @@ public class PaymentService {
     private void refundPayment(Payment payment) {
         try {
             com.razorpay.Payment razorpayPayment = razorpayClient.payments.fetch(payment.getRazorpayPaymentId());
-            String razorpayStatus = String.valueOf(razorpayPayment.get("status"));
-            JSONObject refundRequest = new JSONObject();
-            long amountInPaise = payment.getAmount()
-                    .multiply(BigDecimal.valueOf(100))
-                    .setScale(0, RoundingMode.HALF_UP)
-                    .longValueExact();
+            String razorpayStatus = getRazorpayString(razorpayPayment, "status");
+            log.info("Fetched Razorpay payment before refund. paymentId={}, orderId={}, status={}, amount={}, refundStatus={}",
+                    payment.getRazorpayPaymentId(),
+                    getRazorpayString(razorpayPayment, "order_id"),
+                    razorpayStatus,
+                    razorpayPayment.toJson().opt("amount"),
+                    getRazorpayString(razorpayPayment, "refund_status"));
+
+            if (!"captured".equalsIgnoreCase(razorpayStatus) && !"authorized".equalsIgnoreCase(razorpayStatus)) {
+                throw new IllegalStateException("Cannot refund Razorpay payment because its status is: " + razorpayStatus);
+            }
 
             if ("authorized".equalsIgnoreCase(razorpayStatus)) {
                 JSONObject captureRequest = new JSONObject();
-                captureRequest.put("amount", amountInPaise);
+                captureRequest.put("amount", getAmountInPaise(payment));
                 captureRequest.put("currency", payment.getCurrency());
                 razorpayClient.payments.capture(payment.getRazorpayPaymentId(), captureRequest);
             }
 
-            refundRequest.put("amount", amountInPaise);
+            Refund refund = createRefund(payment);
 
-            Refund refund = razorpayClient.payments.refund(payment.getRazorpayPaymentId(), refundRequest);
-
-            payment.setRazorpayRefundId(refund.get("id"));
+            payment.setRazorpayRefundId(getRazorpayString(refund, "id"));
             payment.setPaymentStatus(PaymentStatus.REFUNDED);
             paymentRepository.save(payment);
         } catch (RazorpayException e) {
             throw new IllegalStateException("Could not refund Razorpay payment: " + e.getMessage(), e);
         }
+    }
+
+    private Refund createRefund(Payment payment) throws RazorpayException {
+        try {
+            return razorpayClient.payments.refund(payment.getRazorpayPaymentId());
+        } catch (RazorpayException fullRefundException) {
+            log.warn("Full Razorpay refund without amount failed for payment {}, retrying with explicit amount",
+                    payment.getRazorpayPaymentId(), fullRefundException);
+
+            JSONObject refundRequest = new JSONObject();
+            refundRequest.put("amount", getAmountInPaise(payment));
+            refundRequest.put("speed", "normal");
+            return razorpayClient.payments.refund(payment.getRazorpayPaymentId(), refundRequest);
+        }
+    }
+
+    private long getAmountInPaise(Payment payment) {
+        return payment.getAmount()
+                .multiply(BigDecimal.valueOf(100))
+                .setScale(0, RoundingMode.HALF_UP)
+                .longValueExact();
+    }
+
+    private String getRazorpayString(com.razorpay.Entity entity, String key) {
+        Object value = entity.toJson().opt(key);
+        return value == null ? null : String.valueOf(value);
     }
 
     private Booking getOwnedBooking(Long bookingId) {

@@ -9,6 +9,7 @@ import com.logic.exception.ResourceNotFoundException;
 import com.logic.exception.UnAuthorisedException;
 import com.logic.strategy.PricingService;
 import com.razorpay.RazorpayClient;
+import com.razorpay.RazorpayException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -232,6 +233,8 @@ public class BookServiceImpl implements BookingService {
             throw new IllegalStateException("Razorpay payment signature verification failed");
         }
 
+        validateRazorpayPayment(booking, paymentVerifyRequest);
+
         paymentService.confirmPaymentFromWebhook(
                 paymentVerifyRequest.getRazorpayOrderId(),
                 paymentVerifyRequest.getRazorpayPaymentId()
@@ -367,6 +370,46 @@ public class BookServiceImpl implements BookingService {
         }
 
         return hex.toString();
+    }
+
+    private void validateRazorpayPayment(Booking booking, BookingPaymentVerifyRequestDTO paymentVerifyRequest) {
+        try {
+            com.razorpay.Payment razorpayPayment = razorpayClient.payments.fetch(paymentVerifyRequest.getRazorpayPaymentId());
+            String razorpayOrderId = getRazorpayString(razorpayPayment, "order_id");
+            String status = getRazorpayString(razorpayPayment, "status");
+            Long razorpayAmount = getRazorpayLong(razorpayPayment, "amount");
+            long expectedAmount = booking.getAmount()
+                    .multiply(BigDecimal.valueOf(100))
+                    .setScale(0, RoundingMode.HALF_UP)
+                    .longValueExact();
+
+            if (!paymentVerifyRequest.getRazorpayOrderId().equals(razorpayOrderId)) {
+                throw new IllegalStateException("Razorpay payment does not belong to this order");
+            }
+
+            if (!"captured".equalsIgnoreCase(status) && !"authorized".equalsIgnoreCase(status)) {
+                throw new IllegalStateException("Razorpay payment is not successful. Current status: " + status);
+            }
+
+            if (razorpayAmount == null || razorpayAmount != expectedAmount) {
+                throw new IllegalStateException("Razorpay payment amount does not match booking amount");
+            }
+        } catch (RazorpayException e) {
+            throw new IllegalStateException("Could not verify Razorpay payment with Razorpay: " + e.getMessage(), e);
+        }
+    }
+
+    private String getRazorpayString(com.razorpay.Entity entity, String key) {
+        Object value = entity.toJson().opt(key);
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private Long getRazorpayLong(com.razorpay.Entity entity, String key) {
+        Object value = entity.toJson().opt(key);
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        return value == null ? null : Long.parseLong(String.valueOf(value));
     }
 
     public boolean hasBookingExpired(Booking booking) {

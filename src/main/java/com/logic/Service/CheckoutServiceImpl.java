@@ -66,7 +66,7 @@ public class CheckoutServiceImpl implements CheckoutService {
             log.info("Order request: {}", orderRequest);
 
             Order order = razorpayClient.orders.create(orderRequest);
-            String orderId = order.get("id");
+            String orderId = String.valueOf(order.toJson().opt("id"));
             log.info("Order created: {}", order);
 
             booking.setRazorpayOrderId(orderId);
